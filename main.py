@@ -1,9 +1,11 @@
 import os
 import sys
 import jwt
+import json
 import time
 import sched
 from google.cloud import bigquery
+from google.oauth2 import service_account
 
 from datetime import datetime
 import requests
@@ -20,7 +22,7 @@ from selenium.webdriver.chrome.options import Options
 # path = './chromedriver/mac/chromedriver'
 # for server
 # path = '/home/edward_vadepark_com/aspen-scraper'
-path = '.'
+path = './chromedriver'
 os.chmod(path+'/lin/chromedriver', 755)
 
 s = sched.scheduler(time.time, time.sleep)
@@ -29,7 +31,9 @@ loopInterval = 1 * 60
 
 oauth = None
 oauth_expire = 0
-client = bigquery.Client()
+credentials = service_account.Credentials.from_service_account_file(
+    'vade-backend-509b193ba372.json', scopes=["https://www.googleapis.com/auth/cloud-platform"])
+client = bigquery.Client(credentials=credentials, project='vade-backend')
 
 
 # from selenium import webdriver
@@ -145,9 +149,11 @@ def test_flock_oauth():
         "corpus": "onlyPlates",
         "dateFilter": {
             "ranges": [
-                {"start": "2022-02-04T19:53:00.000-05:00",
-                  "end": "2022-02-05T21:53:00.000-05:00"
-                 }
+                {
+                    # "start": "2022-02-04T19:53:00.000-05:00",
+                  "start": "2022-02-14T21:53:00.000-05:00",
+                  "end":   "2022-02-15T21:53:00.000-05:00"
+                }
             ],
             "operator": "or"
         },
@@ -193,14 +199,14 @@ def test_flock_oauth():
                         car_center = [
                             bb['x'] + (bb['width']/2), bb['y'] + (bb['height']/2)]
                 output.append({
-                    'time': result['object']['capturedAt'],
+                    'time': result['object']['capturedAt'][:-5],
                     'plate': ocr,
                     'spot_uuid': '5ebf711d-db50-4a82-8066-2d6a6ee44e10',
-                    'plate_center': plate_center,
-                    'plate_bounds': plate_bounds,
-                    'car_bounds': car_bounds,
-                    'car_center': car_center,
-                    'raw_data': result
+                    'plate_center': json.dumps(plate_center),
+                    'plate_bounds': json.dumps(plate_bounds),
+                    'car_bounds': json.dumps(car_bounds),
+                    'car_center': json.dumps(car_center),
+                    'raw_data': json.dumps(result)
                 })
             resp = requests.get(
                 url+'/page/'+resp['nextPageId'], headers=headers).json()
@@ -234,14 +240,14 @@ def test_flock_oauth():
                     car_center = [
                         bb['x'] + (bb['width']/2), bb['y'] + (bb['height']/2)]
             output.append({
-                'time': result['object']['capturedAt'],
+                'time': result['object']['capturedAt'][:-5],
                 'plate': ocr,
                 'spot_uuid': '5ebf711d-db50-4a82-8066-2d6a6ee44e10',
-                'plate_center': plate_center,
-                'plate_bounds': plate_bounds,
-                'car_bounds': car_bounds,
-                'car_center': car_center,
-                'raw_data': result
+                'plate_center': json.dumps(plate_center),
+                'plate_bounds': json.dumps(plate_bounds),
+                'car_bounds': json.dumps(car_bounds),
+                'car_center': json.dumps(car_center),
+                'raw_data': json.dumps(result)
             })
         # print(resp)
     print("============")

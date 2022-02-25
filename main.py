@@ -7,6 +7,9 @@ import sched
 from google.cloud import bigquery
 from google.oauth2 import service_account
 
+from shapely.geometry import Point
+from shapely.geometry.polygon import Polygon
+
 from datetime import datetime
 import requests
 from pytz import reference
@@ -32,9 +35,14 @@ loopInterval = 1 * 60
 oauth = None
 oauth_expire = 0
 credentials = service_account.Credentials.from_service_account_file(
-    'vade-backend-509b193ba372.json', scopes=["https://www.googleapis.com/auth/cloud-platform"])
+    'secrets/vade-backend-509b193ba372.json', scopes=["https://www.googleapis.com/auth/cloud-platform"])
 client = bigquery.Client(credentials=credentials, project='vade-backend')
 
+with open('secrets/flock-login.json', 'r') as file:
+    data = file.read()
+
+# parse file
+flock_login = json.loads(data)
 
 # from selenium import webdriver
 # ser = Service("C:\\chromedriver.exe")
@@ -78,8 +86,9 @@ def refresh_oath_jwt():
         driver.implicitly_wait(10)
 
         driver.find_element(By.NAME, "email").send_keys(
-            'test')
-        driver.find_element(By.NAME, "password").send_keys('test')
+            flock_login['username'])
+        driver.find_element(By.NAME, "password").send_keys(
+            flock_login['password'])
 
         # driver.find_element_by_css_selector("[class*='vjs-big-play-button']")[0].click()
         driver.find_element(By.NAME, "submit").click()
@@ -106,15 +115,15 @@ def refresh_oath_jwt():
                     # )
 
         # print(driver.get_cookies())
-        # driver.save_screenshot('aspen_current.png')
+        # driver.save_screenshot('current.png')
 
         # ingest = "https://us-central1-vade-backend.cloudfunctions.net/vade_ingest_bandaid"
-        # header = {"apiKey": "abc123"}
+        # header = {"apiKey": "testapikey"}
         # payload = {
         #     "cameraID": '6c7b36e8-2b58-48e0-b4f6-ae56c1d59037',
-        #     "apiKey": "abc123"
+        #     "apiKey": "testapikey"
         # }
-        # image_file = open('aspen_current.png', 'rb')
+        # image_file = open('current.png', 'rb')
         # files = [('file', image_file)]
         # upload_status = requests.post(
         #     ingest, headers=header, data=payload, files=files)
@@ -137,10 +146,57 @@ def check_oauth():
     return
 
 
+def parse_results(results):
+    output = []
+    for result in results:
+        ocr = None
+        plate_bounds = []
+        plate_center = []
+        car_bounds = []
+        car_center = []
+        for attr in result['object']['attributes']:
+            if attr['class'] == 'ocr':
+                ocr = attr['value']
+                bb = attr['bestBox']
+                plate_bounds.append([bb['x'], bb['y']])
+                plate_bounds.append([bb['x']+bb['width'], bb['y']])
+                plate_bounds.append(
+                    [bb['x']+bb['width'], bb['y']+bb['height']])
+                plate_bounds.append([bb['x'], bb['y']+bb['height']])
+                plate_center = [
+                    bb['x'] + (bb['width']/2), bb['y'] + (bb['height']/2)]
+            if attr['class'] == 'vehicle_type':
+                bb = attr['bestBox']
+                car_bounds.append([bb['x'], bb['y']])
+                car_bounds.append([bb['x']+bb['width'], bb['y']])
+                car_bounds.append(
+                    [bb['x']+bb['width'], bb['y']+bb['height']])
+                car_bounds.append([bb['x'], bb['y']+bb['height']])
+                car_center = [
+                    bb['x'] + (bb['width']/2), bb['y'] + (bb['height']/2)]
+        plate = Point(plate_center)
+        spot = Polygon([[274, 255], [634, 158], [1917, 560], [
+                        1919, 1078], [1499, 1078]])
+        if spot.contains(plate) is True:
+            output.append({
+                'time': result['object']['capturedAt'][:-5],
+                'plate': ocr,
+                'spot_uuid': '5ebf711d-db50-4a82-8066-2d6a6ee44e10',
+                'plate_center': json.dumps(plate_center),
+                'plate_bounds': json.dumps(plate_bounds),
+                'car_bounds': json.dumps(car_bounds),
+                'car_center': json.dumps(car_center),
+                'raw_data': json.dumps(result)
+            })
+        else:
+            print("outside bounds")
+            print(plate_center)
+    return output
+
+
 def test_flock_oauth():
     check_oauth()
     url = "https://margarita.flocksafety.com/api/v1/search"
-    apiKey = "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IlJEY3pOVVpCT0VSQlFVWTRSREkyUmpNd09EazNORVUwTTBORFJqbENRamRDTlRNek5UTkNOZyJ9.eyJpc3MiOiJodHRwczovL2xvZ2luLmZsb2Nrc2FmZXR5LmNvbS8iLCJzdWIiOiJhdXRoMHw2MGQ2MDkyYTQyOGI1ZDAwNmFlZjc3Y2MiLCJhdWQiOlsiY29tLmZsb2Nrc2FmZXR5Lm1hcmdhcml0YS5wcm9kIiwiaHR0cHM6Ly9wcm9kLWZsb2NrLmF1dGgwLmNvbS91c2VyaW5mbyJdLCJpYXQiOjE2NDM1OTc1OTQsImV4cCI6MTY0MzY4Mzk5NCwiYXpwIjoiMDZOZnJ1NnhScXpWUEFsam85N1h4SzdGZWRvUjdJRVkiLCJzY29wZSI6Im9wZW5pZCBwcm9maWxlIGVtYWlsIn0.UvJCJU08O_OK8tGFh-jGe3FKCH0hRaHn9JWUYl2uu3qzkN2GJbFPg_gJ8iJeS6HOHENDDz4CYYhNAOSnH0cSQ9kjfpEBdfIhxTNI1Ous4N0ZM5ZSFpnQMdfzvPz5wITxRVer7NzcUWV-KP953aLq1FbaXKTmtvVwiRFTw1UA4339yTFrRqoKIRcGQzqlFFmtffiK_oCZdYwpmHk7plW0Tf71_ZTTROjtsI2ZUDhO4v4gNLQZw2yhQvFL1tf9dTQY2sGODL-DDDGL6SM8UAABw0W-2c3qSwr0--ZNbcrPyZxFx4NDl6KKlR2Yxf3zuDG2sRrTCPzON4x6lMNvDWPYEg"
     headers = {
         "Authorization": oauth
     }
@@ -151,8 +207,8 @@ def test_flock_oauth():
             "ranges": [
                 {
                     # "start": "2022-02-04T19:53:00.000-05:00",
-                  "start": "2022-02-14T21:53:00.000-05:00",
-                  "end":   "2022-02-15T21:53:00.000-05:00"
+                  "start": "2022-02-21T21:53:00.000-05:00",
+                  "end":   "2022-02-22T21:53:00.000-05:00"
                 }
             ],
             "operator": "or"
@@ -172,83 +228,13 @@ def test_flock_oauth():
             print("------------")
             print("next page: ", resp['nextPageId'])
             print("count: ", len(resp['results']))
-            for result in resp['results']:
-                ocr = None
-                plate_bounds = []
-                plate_center = []
-                car_bounds = []
-                car_center = []
-                for attr in result['object']['attributes']:
-                    if attr['class'] == 'ocr':
-                        ocr = attr['value']
-                        bb = attr['bestBox']
-                        plate_bounds.append([bb['x'], bb['y']])
-                        plate_bounds.append([bb['x']+bb['width'], bb['y']])
-                        plate_bounds.append(
-                            [bb['x']+bb['width'], bb['y']+bb['height']])
-                        plate_bounds.append([bb['x'], bb['y']+bb['height']])
-                        plate_center = [
-                            bb['x'] + (bb['width']/2), bb['y'] + (bb['height']/2)]
-                    if attr['class'] == 'vehicle_type':
-                        bb = attr['bestBox']
-                        car_bounds.append([bb['x'], bb['y']])
-                        car_bounds.append([bb['x']+bb['width'], bb['y']])
-                        car_bounds.append(
-                            [bb['x']+bb['width'], bb['y']+bb['height']])
-                        car_bounds.append([bb['x'], bb['y']+bb['height']])
-                        car_center = [
-                            bb['x'] + (bb['width']/2), bb['y'] + (bb['height']/2)]
-                output.append({
-                    'time': result['object']['capturedAt'][:-5],
-                    'plate': ocr,
-                    'spot_uuid': '5ebf711d-db50-4a82-8066-2d6a6ee44e10',
-                    'plate_center': json.dumps(plate_center),
-                    'plate_bounds': json.dumps(plate_bounds),
-                    'car_bounds': json.dumps(car_bounds),
-                    'car_center': json.dumps(car_center),
-                    'raw_data': json.dumps(result)
-                })
+            output.extend(parse_results(resp['results']))
             resp = requests.get(
                 url+'/page/'+resp['nextPageId'], headers=headers).json()
         print("------------")
         print("last page")
         print("count: ", len(resp['results']))
-        for result in resp['results']:
-            ocr = None
-            plate_bounds = []
-            plate_center = []
-            car_bounds = []
-            car_center = []
-            for attr in result['object']['attributes']:
-                if attr['class'] == 'ocr':
-                    ocr = attr['value']
-                    bb = attr['bestBox']
-                    plate_bounds.append([bb['x'], bb['y']])
-                    plate_bounds.append([bb['x']+bb['width'], bb['y']])
-                    plate_bounds.append(
-                        [bb['x']+bb['width'], bb['y']+bb['height']])
-                    plate_bounds.append([bb['x'], bb['y']+bb['height']])
-                    plate_center = [
-                        bb['x'] + (bb['width']/2), bb['y'] + (bb['height']/2)]
-                if attr['class'] == 'vehicle_type':
-                    bb = attr['bestBox']
-                    car_bounds.append([bb['x'], bb['y']])
-                    car_bounds.append([bb['x']+bb['width'], bb['y']])
-                    car_bounds.append(
-                        [bb['x']+bb['width'], bb['y']+bb['height']])
-                    car_bounds.append([bb['x'], bb['y']+bb['height']])
-                    car_center = [
-                        bb['x'] + (bb['width']/2), bb['y'] + (bb['height']/2)]
-            output.append({
-                'time': result['object']['capturedAt'][:-5],
-                'plate': ocr,
-                'spot_uuid': '5ebf711d-db50-4a82-8066-2d6a6ee44e10',
-                'plate_center': json.dumps(plate_center),
-                'plate_bounds': json.dumps(plate_bounds),
-                'car_bounds': json.dumps(car_bounds),
-                'car_center': json.dumps(car_center),
-                'raw_data': json.dumps(result)
-            })
+        output.extend(parse_results(resp['results']))
         # print(resp)
     print("============")
     print(len(output))
@@ -281,12 +267,11 @@ def startup():
     print(time.strftime("%a, %D %H:%M:%S", time.localtime()), localtime.tzname(now))
     print("------------------------------------------")
 
-# testing
-# scrape_aspen_livestream()
+# testing()
 
 
 # server
-# startup()
+startup()
 test_flock_oauth()
-# s.enter(loopInterval, 0, scrape_aspen_livestream, ())
+# s.enter(loopInterval, 0, test_flock_oauth, ())
 # s.run()

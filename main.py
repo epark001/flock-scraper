@@ -35,12 +35,12 @@ oauth = None
 oauth_expire = 0
 
 # local
-credentials = service_account.Credentials.from_service_account_file(
-    'secrets/vade-backend-509b193ba372.json', scopes=["https://www.googleapis.com/auth/cloud-platform"])
-client = bigquery.Client(credentials=credentials, project='vade-backend')
+# credentials = service_account.Credentials.from_service_account_file(
+# 'secrets/vade-backend-509b193ba372.json', scopes=["https://www.googleapis.com/auth/cloud-platform"])
+# client = bigquery.Client(credentials=credentials, project='vade-backend')
 
 # gcp
-# client = bigquery.Client()
+client = bigquery.Client()
 
 
 last_timestamp = ''

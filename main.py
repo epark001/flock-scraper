@@ -23,7 +23,7 @@ from selenium.webdriver.chrome.options import Options
 # for local
 # path = './chromedriver/mac/chromedriver'
 # for server
-path = '/home/edward_vadepark_com/flock-scraper/lin/chromedriver'
+path = '/home/edward_vadepark_com/flock-scraper/chromedriver/lin/chromedriver'
 # path = './chromedriver'
 os.chmod(path, 755)
 

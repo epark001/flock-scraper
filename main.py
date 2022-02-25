@@ -10,7 +10,7 @@ from google.oauth2 import service_account
 from shapely.geometry import Point
 from shapely.geometry.polygon import Polygon
 
-from datetime import datetime
+from datetime import datetime, timezone
 import requests
 from pytz import reference
 from dateutil import tz
@@ -37,6 +37,10 @@ oauth_expire = 0
 credentials = service_account.Credentials.from_service_account_file(
     'secrets/vade-backend-509b193ba372.json', scopes=["https://www.googleapis.com/auth/cloud-platform"])
 client = bigquery.Client(credentials=credentials, project='vade-backend')
+
+last_timestamp = ''
+with open('last_timestamp.txt', 'r') as file:
+    last_timestamp = file.read()
 
 with open('secrets/flock-login.json', 'r') as file:
     data = file.read()
@@ -147,6 +151,9 @@ def check_oauth():
 
 
 def parse_results(results):
+    if len(results) < 1:
+        return []
+    global last_timestamp
     output = []
     for result in results:
         ocr = None
@@ -186,15 +193,20 @@ def parse_results(results):
                 'plate_bounds': json.dumps(plate_bounds),
                 'car_bounds': json.dumps(car_bounds),
                 'car_center': json.dumps(car_center),
-                'raw_data': json.dumps(result)
+                'raw_data': json.dumps(result),
+                'within_bounds': True
             })
         else:
-            print("outside bounds")
-            print(plate_center)
+            # print("outside bounds")
+            # print(plate_center)
+            pass
+        last_timestamp = result['object']['capturedAt']
+    print("within_bounds: ", len(output))
     return output
 
 
 def test_flock_oauth():
+    global last_timestamp
     check_oauth()
     url = "https://margarita.flocksafety.com/api/v1/search"
     headers = {
@@ -207,8 +219,9 @@ def test_flock_oauth():
             "ranges": [
                 {
                     # "start": "2022-02-04T19:53:00.000-05:00",
-                  "start": "2022-02-21T21:53:00.000-05:00",
-                  "end":   "2022-02-22T21:53:00.000-05:00"
+                  "start": last_timestamp,
+                  "end": datetime.now(timezone.utc).isoformat()
+                    #   "end":   "2022-02-22T21:53:00.000-05:00"
                 }
             ],
             "operator": "or"
@@ -216,26 +229,38 @@ def test_flock_oauth():
         "licensePlates": {},
         "residency": "Any",
         "reason": "RPA study",
-        "pageSize": 100,
-        "order": "desc"
+        "pageSize": 500,
+        "order": "asc"
     }
     output = []
     response = requests.post(url, headers=headers, json=post_json)
     resp = response.json()
     print("total results: ", resp['totalResults'])
-    if 'nextPageId' in resp:
-        while 'nextPageId' in resp:
-            print("------------")
-            print("next page: ", resp['nextPageId'])
-            print("count: ", len(resp['results']))
-            output.extend(parse_results(resp['results']))
-            resp = requests.get(
-                url+'/page/'+resp['nextPageId'], headers=headers).json()
+    while resp['totalResults'] > 1:
+        # if 'nextPageId' in resp:
+        # TODO: change to for x in res['object']
+        # while 'nextPageId' in resp:
+        #     print("------------")
+        #     print("next page: ", resp['nextPageId'])
+        #     print("count: ", len(resp['results']))
+        #     output.extend(parse_results(resp['results']))
+        #     resp = requests.get(
+        #         url+'/page/'+resp['nextPageId'], headers=headers).json()
         print("------------")
-        print("last page")
-        print("count: ", len(resp['results']))
+        print("results: ", len(resp['results']))
         output.extend(parse_results(resp['results']))
+
+        post_json['dateFilter']['ranges'][0]['start'] = last_timestamp
+        # print('before loopback')
+        print(post_json['dateFilter']['ranges'][0])
+        response = requests.post(url, headers=headers,
+                                 json=post_json, timeout=30)
+        # print('post loopback')
+        resp = response.json()
         # print(resp)
+        # print(resp)
+    with open('last_timestamp.txt', 'w') as f:
+        f.write(last_timestamp)
     print("============")
     print(len(output))
     # print(output[0])
@@ -246,11 +271,11 @@ def test_flock_oauth():
     table_id = "vade-backend.beta_plates.reading_plates"
 
     # Make an API request.
-    errors = client.insert_rows_json(table_id, output)
-    if errors == []:
-        print("New rows have been added.")
-    else:
-        print("Encountered errors while inserting rows: {}".format(errors))
+    # errors = client.insert_rows_json(table_id, output)
+    # if errors == []:
+    #     print("New rows have been added.")
+    # else:
+    #     print("Encountered errors while inserting rows: {}".format(errors))
 
     # print(resp.text)
     # results = resp.json()

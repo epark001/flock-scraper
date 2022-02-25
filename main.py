@@ -23,9 +23,9 @@ from selenium.webdriver.chrome.options import Options
 # for local
 # path = './chromedriver/mac/chromedriver'
 # for server
-# path = '/home/edward_vadepark_com/aspen-scraper'
-path = './chromedriver'
-os.chmod(path+'/lin/chromedriver', 755)
+path = '/home/edward_vadepark_com/flock-scraper/lin/chromedriver'
+# path = './chromedriver'
+os.chmod(path, 755)
 
 s = sched.scheduler(time.time, time.sleep)
 # interval in seconds
@@ -76,12 +76,12 @@ def refresh_oath_jwt():
         # driver = webdriver.Chrome('C:/Users/sseie/1_Directory/Vade/chromedriver/chromedriver.exe')
         # driver = webdriver.Chrome('C:/Users/sseie/1_Directory/Vade/chromedriver/chromedriver.exe', options=chrome_options)
 
-        # driver = webdriver.Chrome(service=Service)
-        driver = webdriver.Chrome(options=chrome_options)
+        # for mac
+        # driver = webdriver.Chrome(options=chrome_options)
 
         # for server
-        # driver = webdriver.Chrome(
-        # path+'/chromedriver_linux64/chromedriver', options=chrome_options)
+        driver = webdriver.Chrome(
+            path, options=chrome_options)
 
         driver.maximize_window()
         driver.get(url)

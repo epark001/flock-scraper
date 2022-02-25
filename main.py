@@ -165,6 +165,13 @@ def parse_results(results):
             })
         last_timestamp = result['object']['capturedAt']
     print("within_bounds: ", len(output))
+    table_id = "vade-backend.beta_plates.reading_plates"
+
+    errors = client.insert_rows_json(table_id, output)
+    if errors == []:
+        print("New rows have been added.")
+    else:
+        print("Encountered errors while inserting rows: {}".format(errors))
     return output
 
 
@@ -213,14 +220,6 @@ def scrape_flock():
         f.write(last_timestamp)
     print("============")
     print(len(output))
-
-    table_id = "vade-backend.beta_plates.reading_plates"
-
-    errors = client.insert_rows_json(table_id, output)
-    if errors == []:
-        print("New rows have been added.")
-    else:
-        print("Encountered errors while inserting rows: {}".format(errors))
 
 
 def startup():

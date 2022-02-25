@@ -14,7 +14,6 @@ from datetime import datetime, timezone
 import requests
 from pytz import reference
 from dateutil import tz
-# from selenium import webdriver
 from seleniumwire import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
@@ -48,24 +47,18 @@ with open('secrets/flock-login.json', 'r') as file:
 # parse file
 flock_login = json.loads(data)
 
-# from selenium import webdriver
-# ser = Service("C:\\chromedriver.exe")
 ser = Service(path)
-# op = webdriver.ChromeOptions()
-# s = webdriver.Chrome(service=ser, options=op)
 
 # chrome headless mode for server
 WINDOW_SIZE = "1920,1080"
 chrome_options = webdriver.ChromeOptions()
-# chrome_options = Options()
-# chrome_options.add_argument("--headless")
-# chrome_options.add_argument("--window-size=%s" % WINDOW_SIZE)
-# chrome_options.add_argument('--no-sandbox')
+chrome_options.add_argument("--headless")
+chrome_options.add_argument("--window-size=%s" % WINDOW_SIZE)
+chrome_options.add_argument('--no-sandbox')
 
 
 def refresh_oath_jwt():
     try:
-
         t = time.localtime()
         current_time = time.strftime("%D %H:%M:%S", t)
         print("============")
@@ -94,52 +87,20 @@ def refresh_oath_jwt():
         driver.find_element(By.NAME, "password").send_keys(
             flock_login['password'])
 
-        # driver.find_element_by_css_selector("[class*='vjs-big-play-button']")[0].click()
         driver.find_element(By.NAME, "submit").click()
         time.sleep(10)
-        global oauth    # Needed to modify global copy of globvar
+        global oauth
 
         for request in driver.requests:
             if request.response:
                 if 'https://margarita.flocksafety.com/' in request.url:
-                    # if oauth == request.headers['Authorization']:
-                    #     print("same")
-                    # else:
-                    #     print("diff")
-                    #     print(request.headers['Authorization'])
                     oauth = request.headers['Authorization']
-
-                    # print(
-                    # request.url,
-                    # request,
-                    # request.headers['Authorization'],
-                    # request.response.status_code,
-                    # request.response.headers,
-                    # '\n--------------------------------'
-                    # )
-
-        # print(driver.get_cookies())
-        # driver.save_screenshot('current.png')
-
-        # ingest = "https://us-central1-vade-backend.cloudfunctions.net/vade_ingest_bandaid"
-        # header = {"apiKey": "testapikey"}
-        # payload = {
-        #     "cameraID": '6c7b36e8-2b58-48e0-b4f6-ae56c1d59037',
-        #     "apiKey": "testapikey"
-        # }
-        # image_file = open('current.png', 'rb')
-        # files = [('file', image_file)]
-        # upload_status = requests.post(
-        #     ingest, headers=header, data=payload, files=files)
-        # print(upload_status)
-        # image_file.close()
 
         driver.close()
     except Exception as e:
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
         print(e, exc_type, fname, exc_tb.tb_lineno)
-    # s.enter(loopInterval, 1, scrape_aspen_livestream, ())
 
 
 def check_oauth():
@@ -196,16 +157,12 @@ def parse_results(results):
                 'raw_data': json.dumps(result),
                 'within_bounds': True
             })
-        else:
-            # print("outside bounds")
-            # print(plate_center)
-            pass
         last_timestamp = result['object']['capturedAt']
     print("within_bounds: ", len(output))
     return output
 
 
-def test_flock_oauth():
+def scrape_flock():
     global last_timestamp
     check_oauth()
     url = "https://margarita.flocksafety.com/api/v1/search"
@@ -237,51 +194,27 @@ def test_flock_oauth():
     resp = response.json()
     print("total results: ", resp['totalResults'])
     while resp['totalResults'] > 1:
-        # if 'nextPageId' in resp:
-        # TODO: change to for x in res['object']
-        # while 'nextPageId' in resp:
-        #     print("------------")
-        #     print("next page: ", resp['nextPageId'])
-        #     print("count: ", len(resp['results']))
-        #     output.extend(parse_results(resp['results']))
-        #     resp = requests.get(
-        #         url+'/page/'+resp['nextPageId'], headers=headers).json()
         print("------------")
         print("results: ", len(resp['results']))
         output.extend(parse_results(resp['results']))
 
         post_json['dateFilter']['ranges'][0]['start'] = last_timestamp
-        # print('before loopback')
         print(post_json['dateFilter']['ranges'][0])
         response = requests.post(url, headers=headers,
                                  json=post_json, timeout=30)
-        # print('post loopback')
         resp = response.json()
-        # print(resp)
-        # print(resp)
     with open('last_timestamp.txt', 'w') as f:
         f.write(last_timestamp)
     print("============")
     print(len(output))
-    # print(output[0])
 
-    # Construct a BigQuery client object.
-
-    # TODO(developer): Set table_id to the ID of table to append to.
     table_id = "vade-backend.beta_plates.reading_plates"
 
-    # Make an API request.
-    # errors = client.insert_rows_json(table_id, output)
-    # if errors == []:
-    #     print("New rows have been added.")
-    # else:
-    #     print("Encountered errors while inserting rows: {}".format(errors))
-
-    # print(resp.text)
-    # results = resp.json()
-    # print("results: ", len(results['results']))
-    # print("total results: ", results['totalResults'])
-    # print("next page id: ", results['nextPageId'])
+    errors = client.insert_rows_json(table_id, output)
+    if errors == []:
+        print("New rows have been added.")
+    else:
+        print("Encountered errors while inserting rows: {}".format(errors))
 
 
 def startup():
@@ -292,11 +225,9 @@ def startup():
     print(time.strftime("%a, %D %H:%M:%S", time.localtime()), localtime.tzname(now))
     print("------------------------------------------")
 
-# testing()
-
 
 # server
 startup()
-test_flock_oauth()
-# s.enter(loopInterval, 0, test_flock_oauth, ())
-# s.run()
+# scrape_flock()
+s.enter(loopInterval, 0, scrape_flock, ())
+s.run()
